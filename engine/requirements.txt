@@ -1,0 +1,14 @@
+# Couche décision (IA)
+anthropic>=0.69
+
+# Couche mesure + exécution (audio / DSP)
+numpy>=1.26
+soundfile>=0.12
+pyloudnorm>=0.1.1
+librosa>=0.10
+pedalboard>=0.9
+
+# API web
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9

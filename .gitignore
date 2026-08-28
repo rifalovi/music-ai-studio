@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+
+# Sorties du moteur
+engine/_uploads/
+engine/_outputs/
+*.wav
+!samples/*.wav

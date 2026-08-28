@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console IA — POC</title>
+<style>
+  :root{
+    --bg:#0e1214; --surface:#161c1f; --surface-2:#1c2427; --line:#2a3438;
+    --ink:#e7eeee; --muted:#95a3a4; --signal:#37d0ba; --warm:#f0a85c; --good:#56d364;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,sans-serif;line-height:1.55}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 24px 80px}
+  h1{font-size:1.7rem;letter-spacing:-.02em;margin:0 0 4px}
+  h1 .a{color:var(--signal)}
+  .sub{color:var(--muted);margin:0 0 28px}
+  label{display:block;font-size:.85rem;color:var(--muted);margin:0 0 6px;
+    text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono)}
+  input[type=file],textarea,select{width:100%;background:var(--surface-2);
+    border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:11px 13px;
+    font-size:.95rem;font-family:inherit}
+  textarea{resize:vertical;min-height:64px}
+  .row{display:grid;gap:16px;margin-bottom:16px}
+  @media(min-width:560px){.grid2{grid-template-columns:1fr 200px}}
+  button{background:var(--signal);color:#04211d;border:0;border-radius:8px;
+    padding:12px 22px;font-weight:600;font-size:.95rem;cursor:pointer;margin-top:6px}
+  button:disabled{opacity:.5;cursor:progress}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:20px 22px;margin-top:20px}
+  .status{color:var(--warm);font-family:var(--mono);font-size:.9rem;min-height:1.3em;margin-top:14px}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .cmp h3{margin:0 0 10px;font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;
+    font-family:var(--mono);color:var(--muted)}
+  .metric{display:flex;justify-content:space-between;font-family:var(--mono);
+    font-size:.88rem;padding:4px 0;border-bottom:1px solid var(--line)}
+  .metric b{color:var(--signal)}
+  .chain li{margin:8px 0;padding-left:6px}
+  .chain .t{font-family:var(--mono);color:var(--signal);font-size:.85rem;
+    text-transform:uppercase;letter-spacing:.06em}
+  .chain .r{color:var(--muted);font-size:.9rem}
+  audio{width:100%;margin-top:8px}
+  .hidden{display:none}
+  .note{color:var(--muted);font-size:.82rem;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Console de mixage <span class="a">augmentée IA</span></h1>
+  <p class="sub">POC Phase 0 — analyse → décision de Claude → traitement → contrôle.</p>
+
+  <div class="card">
+    <div class="row grid2" style="display:grid">
+      <div>
+        <label for="file">Fichier audio (WAV recommandé)</label>
+        <input type="file" id="file" accept="audio/*">
+      </div>
+      <div>
+        <label for="lufs">Loudness cible</label>
+        <select id="lufs">
+          <option value="-14">−14 LUFS (streaming)</option>
+          <option value="-9">−9 LUFS (club / fort)</option>
+          <option value="-16">−16 LUFS (podcast / doux)</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="intent">Intention (langage naturel)</label>
+        <textarea id="intent" placeholder="Ex : voix plus présente, plus chaud, prêt pour le streaming"></textarea>
+      </div>
+    </div>
+    <button id="go">Masteriser</button>
+    <div class="status" id="status"></div>
+    <p class="note">Le traitement tourne côté serveur (moteur DSP Python). Claude ne fait
+      que décider la chaîne — il ne touche jamais le signal.</p>
+  </div>
+
+  <div class="card hidden" id="results">
+    <div class="cmp">
+      <div><h3>Avant</h3><div id="before"></div></div>
+      <div><h3>Après</h3><div id="after"></div></div>
+    </div>
+    <div style="margin-top:20px">
+      <h3 style="font-family:var(--mono);font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)">
+        Décision de Claude — <span id="summary" style="color:var(--ink);text-transform:none"></span></h3>
+      <ul class="chain" id="chain" style="list-style:none;padding:0"></ul>
+    </div>
+    <div style="margin-top:16px">
+      <label>Résultat masterisé</label>
+      <audio id="player" controls></audio>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Base de l'API. À adapter si le serveur tourne ailleurs.
+  const API = location.origin.includes(":8000") ? "" : "http://localhost:8000";
+
+  const $ = (id) => document.getElementById(id);
+  const METRICS = [
+    ["integrated_lufs", "LUFS", " LUFS"],
+    ["loudness_range_lu", "Dynamique", " LU"],
+    ["true_peak_dbtp", "True-peak", " dBTP"],
+    ["crest_factor_db", "Crest factor", " dB"],
+    ["stereo_width", "Largeur stéréo", ""],
+  ];
+
+  function renderProfile(el, p){
+    el.innerHTML = METRICS.map(([k, label, unit]) =>
+      `<div class="metric"><span>${label}</span><b>${p[k]}${unit}</b></div>`
+    ).join("");
+  }
+
+  function renderChain(chain){
+    $("summary").textContent = chain.summary;
+    $("chain").innerHTML = chain.chain.map(p =>
+      `<li><span class="t">${p.type}</span><br><span class="r">${p.reason}</span></li>`
+    ).join("");
+  }
+
+  $("go").addEventListener("click", async () => {
+    const file = $("file").files[0];
+    if(!file){ $("status").textContent = "Choisis d'abord un fichier."; return; }
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("intent", $("intent").value);
+    fd.append("target_lufs", $("lufs").value);
+
+    $("go").disabled = true;
+    $("status").textContent = "Analyse → décision de Claude → traitement…";
+    try {
+      const res = await fetch(API + "/master", { method: "POST", body: fd });
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+
+      renderProfile($("before"), data.before);
+      renderProfile($("after"), data.after);
+      renderChain(data.chain);
+      $("player").src = API + data.output_url;
+      $("results").classList.remove("hidden");
+      $("status").textContent = "Terminé ✓";
+    } catch (e) {
+      $("status").textContent = "Erreur : " + e.message + " (le serveur est-il lancé ?)";
+    } finally {
+      $("go").disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
