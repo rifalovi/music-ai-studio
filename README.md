@@ -52,14 +52,36 @@ python pipeline.py ../samples/Morceau_choix.mp3 \
   -t -14
 ```
 
-Affiche le profil **avant**, la **décision de Claude** (chaîne + justifications),
-le profil **après**, et écrit `master.wav`.
+Affiche le profil **avant**, la **décision** (chaîne + justifications), le profil
+**après**, et écrit `master.wav`.
+
+### Mode hors-ligne (sans clé API)
+
+La couche décision a deux moteurs :
+
+- **Claude** (par défaut si `ANTHROPIC_API_KEY` est définie) — l'ingénieur du son IA.
+- **Règles** (`--offline`, ou automatique si aucune clé) — une baseline déterministe
+  qui nettoie, équilibre et amène à la loudness cible sans réseau. Sert aussi de
+  point de comparaison A/B face aux décisions de Claude.
+
+```bash
+python pipeline.py entree.wav -o master.wav --offline
+```
 
 ### Étapes séparées
 
 ```bash
 python analysis.py    ../samples/Morceau_choix.mp3     # profil chiffré seul
-python ai_engineer.py ../samples/Morceau_choix.mp3 "plus chaud"   # décision seule
+python ai_engineer.py --offline ../samples/Morceau_choix.mp3 "plus chaud"   # décision seule
+```
+
+### Tests
+
+Un auto-test exécute le loop complet (analyse → décision par règles → DSP →
+ré-analyse) sur un signal généré, sans clé API ni fichier externe :
+
+```bash
+python tests/test_loop.py     # ou : pytest tests/
 ```
 
 ### Via l'API + l'UI web (valide la direction « application web »)
@@ -74,7 +96,8 @@ lecteur du résultat.
 
 ## Ce que ce POC prouve — et ne prouve pas
 
-- ✅ La boucle mesure → décision IA structurée → rendu → contrôle est viable.
+- ✅ La boucle mesure → décision structurée → rendu → contrôle **tourne de bout en
+  bout et atteint la loudness cible** (vérifié par `tests/test_loop.py`).
 - ✅ Claude produit une chaîne cohérente à partir des seules mesures.
 - ⚠️ Le jugement final reste **à l'oreille** : prévoir un A/B à l'aveugle.
 - ⚠️ Qualité source : travailler en **WAV / sans perte** pour un vrai master.
