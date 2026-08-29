@@ -75,15 +75,6 @@ python analysis.py    ../samples/Morceau_choix.mp3     # profil chiffré seul
 python ai_engineer.py --offline ../samples/Morceau_choix.mp3 "plus chaud"   # décision seule
 ```
 
-### Tests
-
-Un auto-test exécute le loop complet (analyse → décision par règles → DSP →
-ré-analyse) sur un signal généré, sans clé API ni fichier externe :
-
-```bash
-python tests/test_loop.py     # ou : pytest tests/
-```
-
 ### Via l'API + l'UI web (valide la direction « application web »)
 
 ```bash
@@ -94,19 +85,52 @@ Puis ouvrez `web/index.html` (double-clic, ou servez-le) : upload d'un fichier,
 intention en langage naturel, cible de loudness → avant / décision / après +
 lecteur du résultat.
 
+## Mixage multipiste (Phase 2)
+
+Le mastering ci-dessus traite un master 2-pistes. Le **mixage** travaille piste
+par piste : Claude raisonne sur les profils de **toutes les pistes à la fois** et
+produit, pour chacune, un gain de balance, un panoramique et une chaîne de
+traitement, plus un bus master.
+
+| Couche | Fichier | Rôle |
+|---|---|---|
+| Séparation *(optionnelle)* | `engine/separation.py` | mixdown → stems via Demucs (si tu n'as pas les pistes) |
+| Décision | `engine/mix_engineer.py` | profils des pistes → `MixDecision` (Claude ou règles) |
+| Exécution | `engine/mixing.py` | traitement + gain + pan par piste → sommation → bus |
+| Orchestration | `engine/mix_pipeline.py` | loop complet + CLI |
+
+```bash
+# À partir d'un dossier de stems (un fichier par piste : vocals.wav, drums.wav, …)
+python mix_pipeline.py ./mes_stems -o mix.wav -i "voix devant, mix large" -t -14
+
+# Sans clé API (balance + nettoyage déterministes)
+python mix_pipeline.py ./mes_stems -o mix.wav --offline
+```
+
+> Pas de stems ? `pip install demucs` puis sépare le mixdown via `separation.py`.
+> Demucs (PyTorch) est une dépendance **optionnelle**, lourde, non requise pour
+> mixer des stems déjà fournis.
+
 ## Ce que ce POC prouve — et ne prouve pas
 
-- ✅ La boucle mesure → décision structurée → rendu → contrôle **tourne de bout en
-  bout et atteint la loudness cible** (vérifié par `tests/test_loop.py`).
-- ✅ Claude produit une chaîne cohérente à partir des seules mesures.
+- ✅ La boucle mastering **et** la boucle mixage multipiste **tournent de bout en
+  bout et atteignent la loudness cible** (vérifié par `tests/test_loop.py` et
+  `tests/test_mix.py`).
+- ✅ Claude produit une chaîne / une décision de mix cohérente à partir des seules mesures.
 - ⚠️ Le jugement final reste **à l'oreille** : prévoir un A/B à l'aveugle.
 - ⚠️ Qualité source : travailler en **WAV / sans perte** pour un vrai master.
 - ⚠️ Pas de temps réel via l'IA : la décision est ponctuelle, le DSP fait le reste.
 
+## Tests
+
+```bash
+python tests/test_loop.py    # loop mastering (2-pistes)
+python tests/test_mix.py     # loop mixage multipiste
+# ou : pytest tests/
+```
+
 ## Prochaines phases
 
-1. **MVP mastering web** — l'UI de `web/` intégrée à une vraie app (Next.js),
-   comparaison A/B, export normalisé.
-2. **Mixage multipiste** — import de stems ou séparation de sources (Demucs),
-   traitement par piste.
-3. **Assistant conversationnel + reference matching**.
+1. **MVP web** — UI intégrée à une vraie app (Next.js), comparaison A/B, export.
+2. **Assistant conversationnel** — dialoguer avec le mix (« voix plus devant »).
+3. **Reference matching** — approcher le son d'un morceau de référence.

@@ -106,9 +106,37 @@ class Processor(BaseModel):
 
 
 class ProcessingChain(BaseModel):
-    """Décision complète de l'ingénieur du son IA pour ce morceau."""
+    """Décision complète de l'ingénieur du son IA pour ce morceau (2-pistes / master)."""
 
     summary: str = Field(..., description="Résumé en une phrase de l'intention du traitement")
     target_lufs: float = Field(-14.0, description="Loudness cible (streaming = -14)")
     target_true_peak_db: float = Field(-1.0, description="Plafond true-peak, dBTP")
     chain: List[Processor]
+
+
+# --------------------------------------------------------------------------- #
+#  Décision MULTIPISTE (mixage stem par stem)
+# --------------------------------------------------------------------------- #
+
+class StemDecision(BaseModel):
+    """Traitement + placement d'une piste dans le mix."""
+
+    name: str = Field(..., description="Nom de la piste (ex. vocals, drums, bass, other)")
+    gain_db: float = Field(0.0, description="Balance : niveau relatif de la piste dans le mix")
+    pan: float = Field(0.0, description="Panoramique : -1 = gauche, 0 = centre, +1 = droite")
+    chain: List[Processor] = Field(
+        default_factory=list, description="Traitements appliqués à cette piste avant le bus"
+    )
+
+
+class MixDecision(BaseModel):
+    """Décision complète d'un mixage multipiste : chaque piste + le bus master."""
+
+    summary: str = Field(..., description="Intention globale du mix, en une phrase")
+    target_lufs: float = Field(-14.0, description="Loudness cible du mix final")
+    target_true_peak_db: float = Field(-1.0, description="Plafond true-peak, dBTP")
+    stems: List[StemDecision]
+    bus_chain: List[Processor] = Field(
+        default_factory=list,
+        description="Traitements du bus master (glue, EQ, limiter) après sommation",
+    )
