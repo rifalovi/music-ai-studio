@@ -1,0 +1,71 @@
+:root {
+  --bg: #0e1214;
+  --surface: #161c1f;
+  --surface-2: #1c2427;
+  --line: #2a3438;
+  --ink: #e7eeee;
+  --muted: #95a3a4;
+  --faint: #657072;
+  --signal: #37d0ba;
+  --signal-ink: #8ff0e2;
+  --warm: #f0a85c;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { padding: 0; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.55;
+  min-height: 100vh;
+}
+a { color: var(--signal-ink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+.topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 24px; border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; letter-spacing: -0.01em; }
+.brand .a { color: var(--signal); }
+.topbar .spacer { margin-left: auto; }
+
+h1 { letter-spacing: -0.02em; }
+.eyebrow {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--signal-ink);
+}
+.muted { color: var(--muted); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 9px 14px; font-size: 14px; cursor: pointer; font-family: inherit;
+}
+.btn:hover:not(:disabled) { border-color: var(--signal); }
+.btn.primary { background: var(--signal); color: #04211d; border-color: var(--signal); font-weight: 600; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+input, textarea, select {
+  width: 100%; background: var(--surface-2); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 8px; padding: 10px 12px;
+  font-size: 14px; font-family: inherit;
+}
+label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 20px;
+}
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+
+.project-card { text-decoration: none; color: inherit; display: block; }
+.project-card:hover { border-color: var(--signal); text-decoration: none; }
+.project-card h3 { margin: 0 0 6px; font-size: 15px; }
+.project-card .meta { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+
+.notice { color: var(--warm); font-family: var(--mono); font-size: 13px; }
