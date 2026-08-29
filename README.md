@@ -75,15 +75,29 @@ python analysis.py    ../samples/Morceau_choix.mp3     # profil chiffré seul
 python ai_engineer.py --offline ../samples/Morceau_choix.mp3 "plus chaud"   # décision seule
 ```
 
-### Via l'API + l'UI web (valide la direction « application web »)
+### DAW web — `web/studio.html` (MVP)
+
+Une interface d'édition qui tourne **entièrement dans le navigateur** : charger un
+audio, visualiser la forme d'onde, sélectionner, **couper / rogner / copier /
+coller / fondus**, annuler/rétablir, zoomer, écouter (barre espace), exporter en
+WAV. Le montage ne dépend d'aucun serveur.
 
 ```bash
+# Ouvrir directement (double-clic) pour l'édition ; pour le mastering IA, lancer le moteur :
 uvicorn server:app --reload --port 8000     # depuis engine/
 ```
 
-Puis ouvrez `web/index.html` (double-clic, ou servez-le) : upload d'un fichier,
-intention en langage naturel, cible de loudness → avant / décision / après +
-lecteur du résultat.
+Renseigne l'URL du moteur (`http://localhost:8000`) dans le panneau pour
+déclencher le **mastering IA** ; sans backend, l'édition reste pleinement
+fonctionnelle. `web/index.html` reste la démo simple de mastering (upload → A/B).
+
+### Déploiement multi-utilisateurs (SaaS)
+
+Architecture cible : **Next.js + Supabase** (auth, stockage des projets/pistes) +
+**Vercel** pour le front et l'API légère, et un **worker audio séparé** (conteneur)
+pour le moteur Python — les libs audio et les jobs longs ne tournent pas sur du
+serverless. Génération d'instrumentale recommandée : **Stable Audio (API)** —
+pas d'infra GPU, licence commerciale claire (voir ci-dessous).
 
 ## Mixage multipiste (Phase 2)
 
@@ -137,13 +151,17 @@ tl.write("montage.wav")
 tonalité, tempo, prompt). L'audio est produit par un **modèle de génération
 musicale dédié**, branché via l'interface `MusicGenerator` :
 
+- `StableAudioGenerator` — **recommandé pour un SaaS** : API Stability (pas d'infra
+  GPU à opérer, licence commerciale claire). Nécessite `STABILITY_API_KEY`.
+- `MusicGenGenerator` — adaptateur MusicGen/AudioCraft auto-hébergé (`pip install
+  audiocraft`) : gratuit mais impose une infra GPU. Pertinent à l'échelle.
 - `PlaceholderGenerator` — bouche-trou **synthétique** (pas de la vraie musique),
-  fourni pour exécuter et tester l'arrangement sans modèle externe.
-- `MusicGenGenerator` — adaptateur d'exemple pour MusicGen/AudioCraft (`pip install
-  audiocraft`). D'autres cibles possibles : Stable Audio, Suno/Udio (via API).
+  pour exécuter et tester l'arrangement sans modèle externe.
 
-> **Décision produit à trancher** : quel modèle de génération (coût, licence,
-> droits commerciaux d'usage des instrumentales générées) ?
+> **Pourquoi Stable Audio par défaut** : pour distribuer l'outil à plusieurs
+> utilisateurs en ligne, une API scale à la requête sans GPU par utilisateur, et
+> les droits commerciaux de l'audio généré sont clairs. Suno/Udio donnent une
+> qualité « chanson » supérieure mais des droits de redistribution plus flous.
 
 ## Ce que ce POC prouve — et ne prouve pas
 

@@ -111,6 +111,52 @@ class MusicGenGenerator:
         return wav.astype(np.float32)
 
 
+class StableAudioGenerator:
+    """Adaptateur Stable Audio (Stability AI), via API — RECOMMANDÉ pour un SaaS.
+
+    Pas d'infra GPU à opérer, licence commerciale claire sur l'audio généré.
+    Nécessite la variable d'environnement STABILITY_API_KEY.
+
+        adapter = StableAudioGenerator()
+        audio = adapter.generate(brief, sr=44100)
+
+    L'appel HTTP réel est laissé volontairement minimal (endpoint à confirmer
+    dans la doc Stability au moment de l'intégration) : c'est le point de
+    branchement, pas encore le câblage final.
+    """
+
+    def __init__(self, api_key: str | None = None) -> None:
+        self.api_key = api_key or os.environ.get("STABILITY_API_KEY")
+        if not self.api_key:
+            raise RuntimeError("STABILITY_API_KEY manquante pour Stable Audio.")
+
+    def generate(self, brief: GenerationBrief, sr: int = 44100) -> np.ndarray:
+        import io
+
+        import requests  # dépendance légère, à ajouter aux requirements si activé
+        import soundfile as sf
+
+        prompt = (
+            f"{brief.style} {brief.instrument}, key {brief.key}, {brief.bpm:.0f} BPM. "
+            f"{brief.description}"
+        )
+        resp = requests.post(
+            "https://api.stability.ai/v2beta/audio/generations",
+            headers={"authorization": f"Bearer {self.api_key}", "accept": "audio/*"},
+            files={"none": ""},
+            data={"prompt": prompt, "duration": int(brief_duration_s(brief))},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        audio, model_sr = sf.read(io.BytesIO(resp.content), always_2d=True, dtype="float32")
+        wav = audio.T
+        if model_sr != sr:  # rééchantillonnage simple
+            ratio = sr / model_sr
+            idx = np.clip(np.arange(int(wav.shape[1] * ratio)) / ratio, 0, wav.shape[1] - 1)
+            wav = np.stack([np.interp(idx, np.arange(wav.shape[1]), ch) for ch in wav])
+        return wav.astype(np.float32)
+
+
 # --------------------------------------------------------------------------- #
 #  Le BRIEF : produit par Claude (le cerveau), pas par un modèle audio
 # --------------------------------------------------------------------------- #
