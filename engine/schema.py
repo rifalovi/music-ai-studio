@@ -140,3 +140,25 @@ class MixDecision(BaseModel):
         default_factory=list,
         description="Traitements du bus master (glue, EQ, limiter) après sommation",
     )
+
+
+# --------------------------------------------------------------------------- #
+#  Génération d'instrumentale (le BRIEF ; l'audio vient d'un modèle externe)
+# --------------------------------------------------------------------------- #
+
+class GenerationBrief(BaseModel):
+    """Cahier des charges qu'un modèle de génération musicale doit réaliser.
+
+    Claude produit ce brief à partir de l'intention et du contexte du morceau.
+    Il ne produit PAS l'audio : un modèle de génération dédié (MusicGen,
+    Stable Audio, Suno…) le réalise via l'adaptateur de `generation.py`.
+    """
+
+    instrument: str = Field(..., description="Ex. piano, nappe de synthé, batterie, basse")
+    style: str = Field(..., description="Genre / ambiance, ex. lo-fi, cinématique, trap")
+    key: str = Field("C", description="Tonalité, ex. Am, F#")
+    bpm: float = Field(120.0, description="Tempo cible, aligné sur le morceau")
+    bars: int = Field(8, ge=1, le=64, description="Longueur en mesures")
+    description: str = Field(
+        ..., description="Prompt riche destiné au modèle de génération (texte)"
+    )

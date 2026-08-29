@@ -111,26 +111,66 @@ python mix_pipeline.py ./mes_stems -o mix.wav --offline
 > Demucs (PyTorch) est une dépendance **optionnelle**, lourde, non requise pour
 > mixer des stems déjà fournis.
 
+## Production : édition, tempo, génération (Phase 3)
+
+Vers une vraie DAW augmentée : les briques de **montage**, de **tempo** et de
+**génération** d'instrumentale.
+
+| Fonction | Fichier | Rôle |
+|---|---|---|
+| Édition | `engine/timeline.py` | `Timeline` : couper, coller, insérer, supprimer une région, superposer, fondus, concaténer (montage non destructif) |
+| Tempo | `engine/tempo.py` | détection de BPM, time-stretch (durée sans changer la hauteur), calage d'un extrait sur un tempo cible |
+| Génération | `engine/generation.py` | Claude rédige un `GenerationBrief` ; un `MusicGenerator` branché réalise l'audio |
+
+```python
+from timeline import Timeline
+tl = Timeline.from_file("voix.wav")
+tl = tl.delete_range(12.0, 16.0)          # couper un passage
+tl = tl.insert(4.0, Timeline.from_file("refrain.wav"))  # coller
+tl = tl.overlay(0.0, Timeline.from_file("nappe.wav"), gain_db=-6)  # ajouter une couche
+tl.write("montage.wav")
+```
+
+### ⚠️ La génération d'audio nécessite un modèle externe
+
+**Claude ne génère pas de musique** — il rédige le brief (instrument, style,
+tonalité, tempo, prompt). L'audio est produit par un **modèle de génération
+musicale dédié**, branché via l'interface `MusicGenerator` :
+
+- `PlaceholderGenerator` — bouche-trou **synthétique** (pas de la vraie musique),
+  fourni pour exécuter et tester l'arrangement sans modèle externe.
+- `MusicGenGenerator` — adaptateur d'exemple pour MusicGen/AudioCraft (`pip install
+  audiocraft`). D'autres cibles possibles : Stable Audio, Suno/Udio (via API).
+
+> **Décision produit à trancher** : quel modèle de génération (coût, licence,
+> droits commerciaux d'usage des instrumentales générées) ?
+
 ## Ce que ce POC prouve — et ne prouve pas
 
-- ✅ La boucle mastering **et** la boucle mixage multipiste **tournent de bout en
-  bout et atteignent la loudness cible** (vérifié par `tests/test_loop.py` et
-  `tests/test_mix.py`).
-- ✅ Claude produit une chaîne / une décision de mix cohérente à partir des seules mesures.
+- ✅ Mastering, mixage multipiste, **montage** (couper/coller), **tempo**
+  (time-stretch) et **arrangement** (brief → placement) **tournent de bout en
+  bout** (vérifié par les tests).
+- ✅ Claude produit chaîne de mix / brief de génération à partir des seules mesures / intentions.
+- ⚠️ **Claude ne génère pas d'audio** : la génération d'instrumentale passe par un modèle externe.
 - ⚠️ Le jugement final reste **à l'oreille** : prévoir un A/B à l'aveugle.
-- ⚠️ Qualité source : travailler en **WAV / sans perte** pour un vrai master.
+- ⚠️ Qualité source : travailler en **WAV / sans perte**.
 - ⚠️ Pas de temps réel via l'IA : la décision est ponctuelle, le DSP fait le reste.
 
 ## Tests
 
 ```bash
-python tests/test_loop.py    # loop mastering (2-pistes)
-python tests/test_mix.py     # loop mixage multipiste
+python tests/test_loop.py         # mastering (2-pistes)
+python tests/test_mix.py          # mixage multipiste
+python tests/test_timeline.py     # montage (couper/coller/superposer)
+python tests/test_tempo.py        # tempo (time-stretch, BPM)
+python tests/test_arrangement.py  # brief → génération placeholder → placement
 # ou : pytest tests/
 ```
 
 ## Prochaines phases
 
-1. **MVP web** — UI intégrée à une vraie app (Next.js), comparaison A/B, export.
-2. **Assistant conversationnel** — dialoguer avec le mix (« voix plus devant »).
-3. **Reference matching** — approcher le son d'un morceau de référence.
+1. **MVP web** — UI intégrée à une vraie app (Next.js) : timeline visuelle,
+   édition, mix, écoute A/B, export.
+2. **Génération réelle** — brancher un modèle de génération (décision produit).
+3. **Assistant conversationnel** — dialoguer avec le projet (« voix plus devant »,
+   « ajoute un pont de 8 mesures »).
