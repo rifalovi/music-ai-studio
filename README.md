@@ -163,6 +163,28 @@ musicale dédié**, branché via l'interface `MusicGenerator` :
 > les droits commerciaux de l'audio généré sont clairs. Suno/Udio donnent une
 > qualité « chanson » supérieure mais des droits de redistribution plus flous.
 
+## Outils créatifs (équivalents Mureka)
+
+Suite d'outils calquée sur une interface de production IA (type Mureka). Chacun
+compose montage + génération ; Claude rédige les briefs/scripts, un modèle dédié
+réalise l'audio.
+
+| Outil (réf. Mureka) | Fichier | Rôle | Modèle requis |
+|---|---|---|---|
+| **Découper** | `timeline.py` | couper / rogner / scinder | — (DSP) |
+| **Séparateur** | `separation.py` | chanson → voix + pistes | Demucs |
+| **Modifier** | `tools.regenerate_region` | régénérer une région (durée préservée) | génération |
+| **Étendre** | `tools.extend` | prolonger le morceau | génération |
+| **Ajouter** | `tools.insert_generated` | insérer/superposer une instrumentale | génération |
+| **Créer musique** | `generation.py` | générer une instrumentale | Stable Audio / MusicGen |
+| **Voix** | `voice.py` | script (Claude) → parole (TTS) | ElevenLabs |
+| **Partition** | `transcription.py` | audio → MIDI → partition | basic-pitch, music21 |
+
+`tools.py`, la logique d'arrangement (Modifier/Étendre/Ajouter), est vérifiée de
+bout en bout avec le générateur placeholder (`tests/test_tools.py`) — brancher un
+vrai modèle ne change pas cette logique. `voice.py` et `transcription.py` sont des
+interfaces d'adaptateurs (dépendances ML/TTS optionnelles).
+
 ## Ce que ce POC prouve — et ne prouve pas
 
 - ✅ Mastering, mixage multipiste, **montage** (couper/coller), **tempo**
@@ -182,6 +204,7 @@ python tests/test_mix.py          # mixage multipiste
 python tests/test_timeline.py     # montage (couper/coller/superposer)
 python tests/test_tempo.py        # tempo (time-stretch, BPM)
 python tests/test_arrangement.py  # brief → génération placeholder → placement
+python tests/test_tools.py        # outils créatifs (Modifier / Étendre / Ajouter)
 # ou : pytest tests/
 ```
 
