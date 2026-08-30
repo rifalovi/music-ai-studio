@@ -48,10 +48,13 @@ def _eq_plugins(proc: Processor) -> list:
     return plugins
 
 
-def _build_board(chain: ProcessingChain) -> Pedalboard:
-    """Traduit le ProcessingChain (décision de Claude) en chaîne pedalboard."""
+def build_board_from_processors(procs: list[Processor]) -> Pedalboard:
+    """Traduit une liste de traitements (décision) en chaîne pedalboard.
+
+    Réutilisé pour le master 2-pistes (couche mastering) comme pour chaque
+    piste et le bus de mix (couche multipiste)."""
     board = Pedalboard()
-    for proc in chain.chain:
+    for proc in procs:
         if proc.type == "eq":
             for plugin in _eq_plugins(proc):
                 board.append(plugin)
@@ -86,6 +89,11 @@ def _build_board(chain: ProcessingChain) -> Pedalboard:
         elif proc.type == "gain":
             board.append(Gain(gain_db=proc.gain_db or 0.0))
     return board
+
+
+def _build_board(chain: ProcessingChain) -> Pedalboard:
+    """Chaîne pedalboard à partir d'un ProcessingChain complet (mastering)."""
+    return build_board_from_processors(chain.chain)
 
 
 def _normalize_loudness(audio: np.ndarray, sr: int, target_lufs: float) -> np.ndarray:

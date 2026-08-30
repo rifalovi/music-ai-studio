@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console IA — Studio</title>
+<style>
+  :root{
+    --bg:#0e1214; --surface:#161c1f; --surface-2:#1c2427; --line:#2a3438;
+    --ink:#e7eeee; --muted:#95a3a4; --faint:#657072;
+    --signal:#37d0ba; --signal-ink:#8ff0e2; --warm:#f0a85c; --good:#56d364;
+    --sel:rgba(55,208,186,.18);
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line)}
+  header h1{font-size:1.05rem;margin:0;letter-spacing:-.01em;font-weight:700}
+  header h1 .a{color:var(--signal)}
+  header .status{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--warm);min-height:1em}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .toolbar .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+  button{background:var(--surface-2);color:var(--ink);border:1px solid var(--line);border-radius:7px;
+    padding:7px 11px;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+  button:hover:not(:disabled){border-color:var(--signal)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--signal);color:#04211d;border-color:var(--signal);font-weight:600}
+  button.play{min-width:44px;justify-content:center}
+  label.file{background:var(--signal);color:#04211d;border-radius:7px;padding:7px 12px;font-size:13px;
+    font-weight:600;cursor:pointer}
+  label.file input{display:none}
+
+  main{flex:1;display:flex;min-height:0}
+  .stage{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+  .ruler{height:22px;border-bottom:1px solid var(--line);position:relative;background:var(--surface);
+    font-family:var(--mono);font-size:10px;color:var(--faint);overflow:hidden;flex:0 0 auto}
+  .ruler span{position:absolute;top:4px;transform:translateX(3px)}
+  .wavewrap{flex:1;overflow-x:auto;overflow-y:hidden;position:relative;background:#0b0f11}
+  #wave{display:block;height:100%}
+  .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--faint);
+    font-size:14px;text-align:center;pointer-events:none;padding:20px}
+
+  aside{width:290px;border-left:1px solid var(--line);background:var(--surface);padding:16px;overflow-y:auto;flex:0 0 auto}
+  aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);
+    font-family:var(--mono);margin:0 0 10px}
+  aside .field{margin-bottom:14px}
+  aside label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  aside input,aside textarea,aside select{width:100%;background:var(--surface-2);border:1px solid var(--line);
+    color:var(--ink);border-radius:7px;padding:8px 10px;font-size:13px;font-family:inherit}
+  aside textarea{resize:vertical;min-height:56px}
+  .metrics{font-family:var(--mono);font-size:12px}
+  .metric{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--line)}
+  .metric b{color:var(--signal)}
+  .hint{color:var(--faint);font-size:11px;margin-top:8px;line-height:1.5}
+
+  footer{padding:7px 18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11.5px;
+    color:var(--muted);display:flex;gap:20px;flex-wrap:wrap}
+  footer b{color:var(--ink)}
+  .kbd{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line);
+    border-radius:4px;padding:1px 5px}
+</style>
+</head>
+<body>
+  <header>
+    <h1>Console <span class="a">IA</span> — Studio</h1>
+    <div class="status" id="status"></div>
+  </header>
+
+  <div class="toolbar">
+    <label class="file">Ouvrir un audio<input type="file" id="file" accept="audio/*"></label>
+    <span class="sep"></span>
+    <button class="play" id="play" disabled title="Lecture / Pause (Espace)">▶</button>
+    <button id="stop" disabled title="Stop">■</button>
+    <span class="sep"></span>
+    <button id="cut" disabled title="Supprimer la sélection (couper)">Couper</button>
+    <button id="trim" disabled title="Ne garder que la sélection">Rogner</button>
+    <button id="copy" disabled title="Copier la sélection">Copier</button>
+    <button id="paste" disabled title="Coller à la tête de lecture">Coller</button>
+    <button id="fadein" disabled title="Fondu d'entrée sur la sélection">Fade in</button>
+    <button id="fadeout" disabled title="Fondu de sortie sur la sélection">Fade out</button>
+    <span class="sep"></span>
+    <button id="undo" disabled title="Annuler">Annuler</button>
+    <button id="redo" disabled title="Rétablir">Rétablir</button>
+    <span class="sep"></span>
+    <button id="zoomin" disabled>zoom +</button>
+    <button id="zoomout" disabled>zoom −</button>
+    <span class="sep"></span>
+    <button id="export" disabled title="Exporter en WAV">Exporter WAV</button>
+  </div>
+
+  <main>
+    <div class="stage">
+      <div class="ruler" id="ruler"></div>
+      <div class="wavewrap" id="wavewrap">
+        <canvas id="wave"></canvas>
+        <div class="empty" id="empty">Ouvre un fichier audio (WAV recommandé) pour commencer.<br>
+          Glisse une sélection sur la forme d'onde ; la barre d'outils agit dessus.</div>
+      </div>
+    </div>
+
+    <aside>
+      <h2>Ingénieur IA</h2>
+      <div class="field">
+        <label for="intent">Intention</label>
+        <textarea id="intent" placeholder="voix plus présente, plus chaud, prêt pour le streaming"></textarea>
+      </div>
+      <div class="field">
+        <label for="lufs">Loudness cible</label>
+        <select id="lufs">
+          <option value="-14">−14 LUFS (streaming)</option>
+          <option value="-9">−9 LUFS (fort)</option>
+          <option value="-16">−16 LUFS (doux)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="api">API du moteur (optionnel)</label>
+        <input id="api" placeholder="http://localhost:8000" value="">
+      </div>
+      <button class="primary" id="master" style="width:100%" disabled>Masteriser via IA</button>
+      <p class="hint">Le montage (couper/coller/fondus) tourne dans le navigateur.
+        Le mastering IA nécessite le moteur Python en marche à l'URL ci-dessus.</p>
+
+      <h2 style="margin-top:22px">Mesures</h2>
+      <div class="metrics" id="metrics">
+        <div class="metric"><span>Durée</span><b id="m-dur">—</b></div>
+        <div class="metric"><span>Sample rate</span><b id="m-sr">—</b></div>
+        <div class="metric"><span>Canaux</span><b id="m-ch">—</b></div>
+        <div class="metric"><span>Sélection</span><b id="m-sel">—</b></div>
+        <div class="metric"><span>Crête</span><b id="m-peak">—</b></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <span><b>Espace</b> lecture · <span class="kbd">glisser</span> sélection · <span class="kbd">Suppr</span> couper</span>
+    <span id="foot-pos">00:00.000</span>
+  </footer>
+
+<script>
+"use strict";
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+
+  // --- état ---------------------------------------------------------------
+  let buffer = null;            // AudioBuffer courant (le "document")
+  let clipboard = null;         // AudioBuffer copié
+  let selStart = 0, selEnd = 0; // sélection en secondes
+  let playhead = 0;             // position de lecture en secondes
+  let pps = 120;                // pixels par seconde (zoom)
+  let source = null, playing = false, playStartCtxTime = 0, playStartOffset = 0;
+  const undoStack = [], redoStack = [];
+
+  const wave = $("wave"), wrap = $("wavewrap"), ruler = $("ruler");
+  const g = wave.getContext("2d");
+
+  const setStatus = (m) => { $("status").textContent = m || ""; };
+  const fmt = (s) => {
+    if (!isFinite(s)) return "—";
+    const m = Math.floor(s/60), sec = Math.floor(s%60), ms = Math.floor((s%1)*1000);
+    return `${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}.${String(ms).padStart(3,"0")}`;
+  };
+
+  // --- manipulation de buffers -------------------------------------------
+  function makeBuffer(channels, length, sr){ return ctx.createBuffer(channels, Math.max(1,length), sr); }
+
+  function sliceBuffer(buf, from, to){ // secondes -> nouveau buffer
+    const sr = buf.sampleRate;
+    const a = Math.max(0, Math.floor(from*sr)), b = Math.min(buf.length, Math.floor(to*sr));
+    const len = Math.max(0, b-a);
+    const out = makeBuffer(buf.numberOfChannels, len, sr);
+    for (let c=0;c<buf.numberOfChannels;c++) out.getChannelData(c).set(buf.getChannelData(c).subarray(a,b));
+    return out;
+  }
+
+  function removeRange(buf, from, to){ // enlève [from,to], recolle
+    const sr = buf.sampleRate;
+    const a = Math.max(0, Math.floor(from*sr)), b = Math.min(buf.length, Math.floor(to*sr));
+    const len = buf.length - (b-a);
+    const out = makeBuffer(buf.numberOfChannels, len, sr);
+    for (let c=0;c<buf.numberOfChannels;c++){
+      const src = buf.getChannelData(c), dst = out.getChannelData(c);
+      dst.set(src.subarray(0,a), 0);
+      dst.set(src.subarray(b), a);
+    }
+    return out;
+  }
+
+  function insertBuffer(buf, at, clip){ // insère clip à `at` (s)
+    const sr = buf.sampleRate;
+    const pos = Math.max(0, Math.min(buf.length, Math.floor(at*sr)));
+    const ch = Math.max(buf.numberOfChannels, clip.numberOfChannels);
+    const out = makeBuffer(ch, buf.length + clip.length, sr);
+    for (let c=0;c<ch;c++){
+      const src = buf.getChannelData(Math.min(c, buf.numberOfChannels-1));
+      const cl  = clip.getChannelData(Math.min(c, clip.numberOfChannels-1));
+      const dst = out.getChannelData(c);
+      dst.set(src.subarray(0,pos), 0);
+      dst.set(cl, pos);
+      dst.set(src.subarray(pos), pos+clip.length);
+    }
+    return out;
+  }
+
+  function applyFade(buf, from, to, dir){ // dir: +1 in, -1 out
+    const sr = buf.sampleRate;
+    const a = Math.max(0, Math.floor(from*sr)), b = Math.min(buf.length, Math.floor(to*sr));
+    const out = makeBuffer(buf.numberOfChannels, buf.length, sr);
+    const n = b-a;
+    for (let c=0;c<buf.numberOfChannels;c++){
+      const src = buf.getChannelData(c), dst = out.getChannelData(c);
+      dst.set(src);
+      for (let i=0;i<n;i++){ const g = dir>0 ? i/n : 1-(i/n); dst[a+i] = src[a+i]*g; }
+    }
+    return out;
+  }
+
+  function peakOf(buf){
+    let p = 0;
+    for (let c=0;c<buf.numberOfChannels;c++){ const d=buf.getChannelData(c); for(let i=0;i<d.length;i+=97){ const v=Math.abs(d[i]); if(v>p)p=v; } }
+    return p;
+  }
+
+  // --- historique ---------------------------------------------------------
+  function pushUndo(){ if(buffer){ undoStack.push(buffer); if(undoStack.length>25)undoStack.shift(); redoStack.length=0; } }
+  function commit(newBuf){ pushUndo(); buffer = newBuf; afterEdit(); }
+
+  // --- rendu forme d'onde -------------------------------------------------
+  function layout(){
+    if(!buffer) return;
+    const w = Math.max(wrap.clientWidth, Math.ceil(buffer.duration*pps));
+    const h = wrap.clientHeight;
+    const dpr = window.devicePixelRatio||1;
+    wave.width = w*dpr; wave.height = h*dpr; wave.style.width=w+"px"; wave.style.height=h+"px";
+    g.setTransform(dpr,0,0,dpr,0,0);
+    draw(); drawRuler(w);
+  }
+
+  function draw(){
+    if(!buffer) return;
+    const w = parseInt(wave.style.width), h = parseInt(wave.style.height);
+    g.clearRect(0,0,w,h);
+    // sélection
+    if(selEnd>selStart){
+      g.fillStyle=getCSS("--sel");
+      g.fillRect(selStart*pps,0,(selEnd-selStart)*pps,h);
+    }
+    // onde (mono mix pour l'affichage)
+    const data = buffer.getChannelData(0);
+    const mid = h/2, spp = data.length/w;
+    g.strokeStyle=getCSS("--signal"); g.globalAlpha=.9; g.beginPath();
+    for(let x=0;x<w;x++){
+      let min=1,max=-1; const s=Math.floor(x*spp), e=Math.floor((x+1)*spp);
+      for(let i=s;i<e;i++){ const v=data[i]; if(v<min)min=v; if(v>max)max=v; }
+      g.moveTo(x, mid - max*mid*0.95); g.lineTo(x, mid - min*mid*0.95);
+    }
+    g.stroke(); g.globalAlpha=1;
+    // tête de lecture
+    g.strokeStyle=getCSS("--warm"); g.beginPath(); g.moveTo(playhead*pps,0); g.lineTo(playhead*pps,h); g.stroke();
+  }
+
+  function drawRuler(w){
+    ruler.innerHTML="";
+    const step = pps>=200?0.5:(pps>=90?1:(pps>=40?2:5));
+    for(let t=0;t<=buffer.duration;t+=step){
+      const s=document.createElement("span"); s.textContent=fmt(t).slice(0,-4); s.style.left=(t*pps)+"px"; ruler.appendChild(s);
+    }
+    ruler.style.width=w+"px";
+  }
+
+  const getCSS = (v)=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  // --- interactions souris ------------------------------------------------
+  let dragging=false;
+  wave.addEventListener("mousedown",(e)=>{
+    if(!buffer)return; dragging=true; const x=e.offsetX; selStart=x/pps; selEnd=x/pps; playhead=selStart; draw(); updateMetrics();
+  });
+  wave.addEventListener("mousemove",(e)=>{
+    if(!dragging)return; selEnd=Math.max(0,Math.min(buffer.duration,e.offsetX/pps)); draw(); updateMetrics();
+  });
+  window.addEventListener("mouseup",()=>{
+    if(!dragging)return; dragging=false;
+    if(selEnd<selStart){const t=selStart;selStart=selEnd;selEnd=t;}
+    if(selEnd-selStart<0.001){selEnd=selStart;} // clic simple = pas de sélection
+    refreshButtons();
+  });
+
+  // --- transport ----------------------------------------------------------
+  function play(){
+    if(!buffer||playing)return;
+    source=ctx.createBufferSource(); source.buffer=buffer; source.connect(ctx.destination);
+    const off = (selEnd>selStart? selStart : playhead) % buffer.duration;
+    playStartOffset=off; playStartCtxTime=ctx.currentTime;
+    source.start(0, off); playing=true; $("play").textContent="⏸";
+    source.onended=()=>{ if(playing) stop(); };
+    ctx.resume(); tick();
+  }
+  function pause(){ if(!playing)return; playhead=currentPos(); if(source){source.onended=null;source.stop();} playing=false; $("play").textContent="▶"; draw(); }
+  function stop(){ if(source){source.onended=null;try{source.stop();}catch(e){}} playing=false; $("play").textContent="▶"; playhead=selEnd>selStart?selStart:0; draw(); updatePos(); }
+  function currentPos(){ return Math.min(buffer.duration, playStartOffset + (ctx.currentTime-playStartCtxTime)); }
+  function tick(){ if(!playing)return; playhead=currentPos(); draw(); updatePos(); requestAnimationFrame(tick); }
+  function updatePos(){ $("foot-pos").textContent=fmt(playhead); }
+
+  // --- métriques ----------------------------------------------------------
+  function updateMetrics(){
+    $("m-sel").textContent = selEnd>selStart ? `${fmt(selStart).slice(0,-1)}–${fmt(selEnd).slice(0,-1)}` : "—";
+  }
+  function fullMetrics(){
+    $("m-dur").textContent=fmt(buffer.duration);
+    $("m-sr").textContent=buffer.sampleRate+" Hz";
+    $("m-ch").textContent=buffer.numberOfChannels;
+    const p=peakOf(buffer); $("m-peak").textContent=(20*Math.log10(p||1e-6)).toFixed(1)+" dBFS";
+    updateMetrics();
+  }
+
+  // --- boutons ------------------------------------------------------------
+  function refreshButtons(){
+    const has=!!buffer, sel=selEnd>selStart;
+    ["play","stop","export","zoomin","zoomout"].forEach(id=>$(id).disabled=!has);
+    ["cut","trim","copy","fadein","fadeout"].forEach(id=>$(id).disabled=!(has&&sel));
+    $("paste").disabled=!(has&&clipboard);
+    $("undo").disabled=!undoStack.length; $("redo").disabled=!redoStack.length;
+    $("master").disabled=!has;
+  }
+  function afterEdit(){ selEnd=selStart; layout(); fullMetrics(); refreshButtons(); }
+
+  // --- actions d'édition --------------------------------------------------
+  $("cut").onclick=()=>{ commit(removeRange(buffer,selStart,selEnd)); };
+  $("trim").onclick=()=>{ commit(sliceBuffer(buffer,selStart,selEnd)); };
+  $("copy").onclick=()=>{ clipboard=sliceBuffer(buffer,selStart,selEnd); setStatus("Sélection copiée"); refreshButtons(); };
+  $("paste").onclick=()=>{ if(clipboard) commit(insertBuffer(buffer,playhead,clipboard)); };
+  $("fadein").onclick=()=>{ commit(applyFade(buffer,selStart,selEnd,+1)); };
+  $("fadeout").onclick=()=>{ commit(applyFade(buffer,selStart,selEnd,-1)); };
+  $("undo").onclick=()=>{ if(undoStack.length){ redoStack.push(buffer); buffer=undoStack.pop(); afterEdit(); } };
+  $("redo").onclick=()=>{ if(redoStack.length){ undoStack.push(buffer); buffer=redoStack.pop(); afterEdit(); } };
+  $("zoomin").onclick=()=>{ pps=Math.min(1200,pps*1.6); layout(); };
+  $("zoomout").onclick=()=>{ pps=Math.max(20,pps/1.6); layout(); };
+  $("play").onclick=()=>{ playing?pause():play(); };
+  $("stop").onclick=stop;
+
+  window.addEventListener("keydown",(e)=>{
+    if(e.target.tagName==="TEXTAREA"||e.target.tagName==="INPUT")return;
+    if(e.code==="Space"){ e.preventDefault(); if(buffer) (playing?pause():play()); }
+    if(e.code==="Delete"||e.code==="Backspace"){ if(!$("cut").disabled){ e.preventDefault(); $("cut").click(); } }
+  });
+
+  // --- chargement / export ------------------------------------------------
+  $("file").addEventListener("change", async (e)=>{
+    const f=e.target.files[0]; if(!f)return;
+    setStatus("Décodage…");
+    try{
+      const arr=await f.arrayBuffer(); buffer=await ctx.decodeAudioData(arr);
+      undoStack.length=0; redoStack.length=0; selStart=selEnd=playhead=0;
+      $("empty").style.display="none"; layout(); fullMetrics(); refreshButtons(); setStatus("");
+    }catch(err){ setStatus("Décodage impossible : "+err.message); }
+  });
+
+  function encodeWav(buf){
+    const nCh=buf.numberOfChannels, len=buf.length, sr=buf.sampleRate;
+    const out=new DataView(new ArrayBuffer(44+len*nCh*2));
+    const wr=(o,s)=>{ for(let i=0;i<s.length;i++) out.setUint8(o+i,s.charCodeAt(i)); };
+    wr(0,"RIFF"); out.setUint32(4,36+len*nCh*2,true); wr(8,"WAVE"); wr(12,"fmt ");
+    out.setUint32(16,16,true); out.setUint16(20,1,true); out.setUint16(22,nCh,true);
+    out.setUint32(24,sr,true); out.setUint32(28,sr*nCh*2,true); out.setUint16(32,nCh*2,true);
+    out.setUint16(34,16,true); wr(36,"data"); out.setUint32(40,len*nCh*2,true);
+    let o=44;
+    for(let i=0;i<len;i++) for(let c=0;c<nCh;c++){ let s=Math.max(-1,Math.min(1,buf.getChannelData(c)[i])); out.setInt16(o,s<0?s*0x8000:s*0x7FFF,true); o+=2; }
+    return new Blob([out],{type:"audio/wav"});
+  }
+  $("export").onclick=()=>{
+    const url=URL.createObjectURL(encodeWav(buffer));
+    const a=document.createElement("a"); a.href=url; a.download="montage.wav"; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  };
+
+  // --- mastering IA (appelle le moteur Python) ----------------------------
+  $("master").onclick=async ()=>{
+    const api=$("api").value.trim();
+    if(!api){ setStatus("Renseigne l'URL du moteur pour le mastering IA."); return; }
+    setStatus("Envoi au moteur IA…"); $("master").disabled=true;
+    try{
+      const fd=new FormData();
+      fd.append("file", encodeWav(buffer), "in.wav");
+      fd.append("intent", $("intent").value);
+      fd.append("target_lufs", $("lufs").value);
+      const res=await fetch(api.replace(/\/$/,"")+"/master",{method:"POST",body:fd});
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      const data=await res.json();
+      const wavRes=await fetch(api.replace(/\/$/,"")+data.output_url);
+      buffer=await ctx.decodeAudioData(await wavRes.arrayBuffer());
+      undoStack.length=0; afterEdit();
+      setStatus(`Masterisé ✓  ${data.before.integrated_lufs}→${data.after.integrated_lufs} LUFS`);
+    }catch(err){ setStatus("Moteur injoignable : "+err.message); }
+    finally{ $("master").disabled=false; }
+  };
+
+  window.addEventListener("resize",()=>{ if(buffer) layout(); });
+  refreshButtons();
+})();
+</script>
+</body>
+</html>

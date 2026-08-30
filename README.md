@@ -52,38 +52,143 @@ python pipeline.py ../samples/Morceau_choix.mp3 \
   -t -14
 ```
 
-Affiche le profil **avant**, la **décision de Claude** (chaîne + justifications),
-le profil **après**, et écrit `master.wav`.
+Affiche le profil **avant**, la **décision** (chaîne + justifications), le profil
+**après**, et écrit `master.wav`.
+
+### Mode hors-ligne (sans clé API)
+
+La couche décision a deux moteurs :
+
+- **Claude** (par défaut si `ANTHROPIC_API_KEY` est définie) — l'ingénieur du son IA.
+- **Règles** (`--offline`, ou automatique si aucune clé) — une baseline déterministe
+  qui nettoie, équilibre et amène à la loudness cible sans réseau. Sert aussi de
+  point de comparaison A/B face aux décisions de Claude.
+
+```bash
+python pipeline.py entree.wav -o master.wav --offline
+```
 
 ### Étapes séparées
 
 ```bash
 python analysis.py    ../samples/Morceau_choix.mp3     # profil chiffré seul
-python ai_engineer.py ../samples/Morceau_choix.mp3 "plus chaud"   # décision seule
+python ai_engineer.py --offline ../samples/Morceau_choix.mp3 "plus chaud"   # décision seule
 ```
 
-### Via l'API + l'UI web (valide la direction « application web »)
+### DAW web — `web/studio.html` (MVP)
+
+Une interface d'édition qui tourne **entièrement dans le navigateur** : charger un
+audio, visualiser la forme d'onde, sélectionner, **couper / rogner / copier /
+coller / fondus**, annuler/rétablir, zoomer, écouter (barre espace), exporter en
+WAV. Le montage ne dépend d'aucun serveur.
 
 ```bash
+# Ouvrir directement (double-clic) pour l'édition ; pour le mastering IA, lancer le moteur :
 uvicorn server:app --reload --port 8000     # depuis engine/
 ```
 
-Puis ouvrez `web/index.html` (double-clic, ou servez-le) : upload d'un fichier,
-intention en langage naturel, cible de loudness → avant / décision / après +
-lecteur du résultat.
+Renseigne l'URL du moteur (`http://localhost:8000`) dans le panneau pour
+déclencher le **mastering IA** ; sans backend, l'édition reste pleinement
+fonctionnelle. `web/index.html` reste la démo simple de mastering (upload → A/B).
+
+### Déploiement multi-utilisateurs (SaaS)
+
+Architecture cible : **Next.js + Supabase** (auth, stockage des projets/pistes) +
+**Vercel** pour le front et l'API légère, et un **worker audio séparé** (conteneur)
+pour le moteur Python — les libs audio et les jobs longs ne tournent pas sur du
+serverless. Génération d'instrumentale recommandée : **Stable Audio (API)** —
+pas d'infra GPU, licence commerciale claire (voir ci-dessous).
+
+## Mixage multipiste (Phase 2)
+
+Le mastering ci-dessus traite un master 2-pistes. Le **mixage** travaille piste
+par piste : Claude raisonne sur les profils de **toutes les pistes à la fois** et
+produit, pour chacune, un gain de balance, un panoramique et une chaîne de
+traitement, plus un bus master.
+
+| Couche | Fichier | Rôle |
+|---|---|---|
+| Séparation *(optionnelle)* | `engine/separation.py` | mixdown → stems via Demucs (si tu n'as pas les pistes) |
+| Décision | `engine/mix_engineer.py` | profils des pistes → `MixDecision` (Claude ou règles) |
+| Exécution | `engine/mixing.py` | traitement + gain + pan par piste → sommation → bus |
+| Orchestration | `engine/mix_pipeline.py` | loop complet + CLI |
+
+```bash
+# À partir d'un dossier de stems (un fichier par piste : vocals.wav, drums.wav, …)
+python mix_pipeline.py ./mes_stems -o mix.wav -i "voix devant, mix large" -t -14
+
+# Sans clé API (balance + nettoyage déterministes)
+python mix_pipeline.py ./mes_stems -o mix.wav --offline
+```
+
+> Pas de stems ? `pip install demucs` puis sépare le mixdown via `separation.py`.
+> Demucs (PyTorch) est une dépendance **optionnelle**, lourde, non requise pour
+> mixer des stems déjà fournis.
+
+## Production : édition, tempo, génération (Phase 3)
+
+Vers une vraie DAW augmentée : les briques de **montage**, de **tempo** et de
+**génération** d'instrumentale.
+
+| Fonction | Fichier | Rôle |
+|---|---|---|
+| Édition | `engine/timeline.py` | `Timeline` : couper, coller, insérer, supprimer une région, superposer, fondus, concaténer (montage non destructif) |
+| Tempo | `engine/tempo.py` | détection de BPM, time-stretch (durée sans changer la hauteur), calage d'un extrait sur un tempo cible |
+| Génération | `engine/generation.py` | Claude rédige un `GenerationBrief` ; un `MusicGenerator` branché réalise l'audio |
+
+```python
+from timeline import Timeline
+tl = Timeline.from_file("voix.wav")
+tl = tl.delete_range(12.0, 16.0)          # couper un passage
+tl = tl.insert(4.0, Timeline.from_file("refrain.wav"))  # coller
+tl = tl.overlay(0.0, Timeline.from_file("nappe.wav"), gain_db=-6)  # ajouter une couche
+tl.write("montage.wav")
+```
+
+### ⚠️ La génération d'audio nécessite un modèle externe
+
+**Claude ne génère pas de musique** — il rédige le brief (instrument, style,
+tonalité, tempo, prompt). L'audio est produit par un **modèle de génération
+musicale dédié**, branché via l'interface `MusicGenerator` :
+
+- `StableAudioGenerator` — **recommandé pour un SaaS** : API Stability (pas d'infra
+  GPU à opérer, licence commerciale claire). Nécessite `STABILITY_API_KEY`.
+- `MusicGenGenerator` — adaptateur MusicGen/AudioCraft auto-hébergé (`pip install
+  audiocraft`) : gratuit mais impose une infra GPU. Pertinent à l'échelle.
+- `PlaceholderGenerator` — bouche-trou **synthétique** (pas de la vraie musique),
+  pour exécuter et tester l'arrangement sans modèle externe.
+
+> **Pourquoi Stable Audio par défaut** : pour distribuer l'outil à plusieurs
+> utilisateurs en ligne, une API scale à la requête sans GPU par utilisateur, et
+> les droits commerciaux de l'audio généré sont clairs. Suno/Udio donnent une
+> qualité « chanson » supérieure mais des droits de redistribution plus flous.
 
 ## Ce que ce POC prouve — et ne prouve pas
 
-- ✅ La boucle mesure → décision IA structurée → rendu → contrôle est viable.
-- ✅ Claude produit une chaîne cohérente à partir des seules mesures.
+- ✅ Mastering, mixage multipiste, **montage** (couper/coller), **tempo**
+  (time-stretch) et **arrangement** (brief → placement) **tournent de bout en
+  bout** (vérifié par les tests).
+- ✅ Claude produit chaîne de mix / brief de génération à partir des seules mesures / intentions.
+- ⚠️ **Claude ne génère pas d'audio** : la génération d'instrumentale passe par un modèle externe.
 - ⚠️ Le jugement final reste **à l'oreille** : prévoir un A/B à l'aveugle.
-- ⚠️ Qualité source : travailler en **WAV / sans perte** pour un vrai master.
+- ⚠️ Qualité source : travailler en **WAV / sans perte**.
 - ⚠️ Pas de temps réel via l'IA : la décision est ponctuelle, le DSP fait le reste.
+
+## Tests
+
+```bash
+python tests/test_loop.py         # mastering (2-pistes)
+python tests/test_mix.py          # mixage multipiste
+python tests/test_timeline.py     # montage (couper/coller/superposer)
+python tests/test_tempo.py        # tempo (time-stretch, BPM)
+python tests/test_arrangement.py  # brief → génération placeholder → placement
+# ou : pytest tests/
+```
 
 ## Prochaines phases
 
-1. **MVP mastering web** — l'UI de `web/` intégrée à une vraie app (Next.js),
-   comparaison A/B, export normalisé.
-2. **Mixage multipiste** — import de stems ou séparation de sources (Demucs),
-   traitement par piste.
-3. **Assistant conversationnel + reference matching**.
+1. **MVP web** — UI intégrée à une vraie app (Next.js) : timeline visuelle,
+   édition, mix, écoute A/B, export.
+2. **Génération réelle** — brancher un modèle de génération (décision produit).
+3. **Assistant conversationnel** — dialoguer avec le projet (« voix plus devant »,
+   « ajoute un pont de 8 mesures »).
